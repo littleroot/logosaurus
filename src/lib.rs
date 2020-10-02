@@ -3,7 +3,7 @@
 //!
 //! The primary type is [`Logger`], which represents a logging object.
 //!
-//! Use [`init`] to initialize a logger with the `log` crate.
+//! Use [`init`] to globally initialize a logger with the `log` crate.
 //!
 //! Every log message is output on a separate line: if the message being printed does not end in a
 //! newline, the logger will add one.
