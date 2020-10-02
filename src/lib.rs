@@ -35,6 +35,7 @@
 //!                   .set_flags(L_STD | L_SHORT_FILE | L_MICROSECONDS)
 //!                   .set_prefix("myprogram: ")
 //!                   .build();
+//!
 //!   logosaurus::init(logger).unwrap();
 //!   debug!("hello, world"); // myprogram: DEBUG 2020/10/02 21:27:03.123123 main.rs:12: hello, world
 //! }
