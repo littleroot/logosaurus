@@ -1,5 +1,5 @@
 [package]
-name = "package-log"
+name = "logosaurus"
 version = "0.1.0"
 authors = ["Nishanth Shanmugham <nishanths@utexas.edu>"]
 edition = "2018"

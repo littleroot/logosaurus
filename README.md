@@ -1,4 +1,4 @@
-# package-log
+# logosaurus
 
 Rust logging implementation modeled after Go's log package. It works with the
 [`log`](https://crates.io/crates/log) crate.
