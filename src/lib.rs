@@ -1,3 +1,45 @@
+//! The logosaurus crate provides a logging implementation that works with the [`log`] crate. The
+//! crate and the logger are modeled after the Go standard library's log package.
+//!
+//! The primary type is [`Logger`], which represents a logging object.
+//!
+//! Use [`init`] to initialize a logger with the `log` crate.
+//!
+//! # Examples
+//!
+//! ## Using the default logger
+//!
+//! ```
+//! use log::{debug};
+//! use logosaurus::{Logger};
+//!
+//! fn main() {
+//!   logosaurus::init(Logger::default()).unwrap();
+//!   debug!("hello, world"); // DEBUG 2020/10/02 21:27:03 hello, world
+//! }
+//! ```
+//!
+//! ## Using a custom logger
+//!
+//! ```
+//! use log::{self, debug};
+//! use logosaurus::{Logger, Output, L_STD, L_SHORT_FILE, L_MICROSECONDS};
+//!
+//! fn main() {
+//!   let logger = Logger::builder()
+//!                   .set_level(log::LevelFilter::Debug)
+//!                   .set_output(Output::Stdout)
+//!                   .set_flags(L_STD | L_SHORT_FILE | L_MICROSECONDS)
+//!                   .set_prefix("myprogram: ")
+//!                   .build();
+//!   logosaurus::init(logger).unwrap();
+//!   debug!("hello, world"); // myprogram: DEBUG 2020/10/02 21:27:03.123123 main.rs:12: hello, world
+//! }
+//! ```
+//!
+//! [`log`]: https://crates.io/crates/log
+//! [`Logger`]: struct.Logger.html
+//! [`init`]: fn.init.html
 use chrono::{self, Timelike};
 use log;
 use std::fmt;
@@ -5,25 +47,74 @@ use std::io;
 use std::path;
 use std::sync::Mutex;
 
+/// Specifies the destination to write log output: stdout or stderr.
 #[derive(Clone, Copy)]
 pub enum Output {
     Stdout,
     Stderr,
 }
 
+/// Formatting flags for the header in log output.
+/// See the `L_*` constants.
+///
+/// With the exception of the `L_MSG_PREFIX` flag, there is no control over the order that header
+/// text appears, or the format they present (described in the `L*` constants).
+///
+/// For example, the L_DATE | L_TIME flags produce:
+/// ```txt
+/// 2009/01/23 17:05:23 message
+/// ```
+/// while L_DATE | L_TIME | L_MICROSECONDS | L_SHORT_FILE | L_LEVEL produce:
+/// ```txt
+/// INFO 2009/01/23 17:05:23 main.rs:3: message
+/// ```
 pub type Flag = u8;
 
+/// No header.
 pub const L_NONE: Flag = 0;
+/// Date in local time zone: 2009/01/23.
 pub const L_DATE: Flag = 1;
+/// Time in local time zone: 17:05:23.
 pub const L_TIME: Flag = 2;
+/// Microsecond resolution: 17:05:23.023123; assumes `L_TIME`.
 pub const L_MICROSECONDS: Flag = 4;
+/// Module, file name, and line number: `foo src/file.rs:3`.
 pub const L_LONG_FILE: Flag = 8;
+/// Final file name element and line number: `file.rs:3`.
 pub const L_SHORT_FILE: Flag = 16;
+/// If `L_DATE` or `L_TIME` is set, use UTC rather than the local time.
 pub const L_UTC: Flag = 32;
+/// Move the "prefix" from the beginning of the header to the end,
+/// just before the message.
 pub const L_MSG_PREFIX: Flag = 64;
+/// Log level printed in capitalized form: INFO, TRACE, etc.
 pub const L_LEVEL: Flag = 128;
+/// Initial values for the default logger constructed with `Logger::default()`.
 pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 
+/// Builder for a [`Logger`].
+///
+/// Use `Logger:builder()` to obtain a `LoggerBuilder`.
+///
+/// Unmodified or unset values in the builder will default to the values used by
+/// [`Logger::default()`].
+///
+/// # Example
+///
+/// ```
+/// use log;
+/// use logosaurus::{Logger, Output, L_STD, L_SHORT_FILE};
+///
+/// let mut builder = Logger::builder();
+/// let logger = builder.set_level(log::LevelFilter::Debug)
+///                 .set_output(Output::Stdout)
+///                 .set_flags(L_STD | L_SHORT_FILE)
+///                 .set_prefix("myprogram: ")
+///                 .build();
+/// ```
+///
+/// [`Logger`]: struct.Logger.html
+/// [`Logger::default()`]: struct.Logger.html#impl-Default
 pub struct LoggerBuilder {
     level: log::LevelFilter,
     output: Output,
@@ -32,26 +123,31 @@ pub struct LoggerBuilder {
 }
 
 impl LoggerBuilder {
+    /// Set the minimum allowed log level.
     pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder {
         self.level = level;
         self
     }
 
+    /// Set the destination where output should be written.
     pub fn set_output<'a>(&'a mut self, output: Output) -> &'a mut LoggerBuilder {
         self.output = output;
         self
     }
 
+    /// Set the formatting flags.
     pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder {
         self.flag = flag;
         self
     }
 
+    /// Set the prefix.
     pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder {
         self.prefix = String::from(prefix);
         self
     }
 
+    /// Construct a `Logger` from this `LoggerBuilder`.
     pub fn build(&self) -> Logger {
         Logger {
             mu: Mutex::new(()),
@@ -63,17 +159,12 @@ impl LoggerBuilder {
     }
 }
 
-impl Default for LoggerBuilder {
-    fn default() -> LoggerBuilder {
-        LoggerBuilder {
-            level: log::LevelFilter::Trace,
-            output: Output::Stderr,
-            flag: L_STD,
-            prefix: String::from(""),
-        }
-    }
-}
-
+/// Represents a logging object that writes to a specified output. It can be used simultaneously
+/// from multiple threads; it guarantees to serialize writes.
+///
+/// Use [`LoggerBuilder`] to construct a `Logger`, or use `Logger::default()`.
+///
+/// [`LoggerBuilder`]: struct.LoggerBuilder.html
 pub struct Logger {
     mu: Mutex<()>, // guards below fields
     level: log::LevelFilter,
@@ -82,51 +173,81 @@ pub struct Logger {
     prefix: String,
 }
 
+/// Initialize the logger to use with the [`log`] crate.
+///
+/// ```
+/// use log::{debug};
+///
+/// fn main() {
+///   logosaurus::init(logosaurus::Logger::default()).unwrap();
+///   debug!("hello, world");
+/// }
+/// ```
+///
+/// See [`LoggerBuilder`] or [`Logger`] to initialize a custom logger.
+///
+/// [`log`]: https://crates.io/crates/log
+/// [`LoggerBuilder`]: struct.LoggerBuilder.html
+/// [`Logger`]: struct.Logger.html
 pub fn init(l: Logger) -> Result<(), log::SetLoggerError> {
     log::set_max_level(l.level);
     log::set_boxed_logger(Box::new(l))
 }
 
 impl Logger {
+    /// Returns a `LoggerBuilder` that can be used to build a `Logger`.
     pub fn builder() -> LoggerBuilder {
-        LoggerBuilder::default()
+        LoggerBuilder {
+            level: log::LevelFilter::Trace,
+            output: Output::Stderr,
+            flag: L_STD,
+            prefix: String::from(""),
+        }
     }
 
+    /// Returns the current level.
     pub fn level(&self) -> log::LevelFilter {
         let _lock = self.mu.lock();
         self.level
     }
 
+    /// Set the level.
     pub fn set_level(&mut self, level: log::LevelFilter) {
         let _lock = self.mu.lock();
         self.level = level;
     }
 
+    /// Returns the destination where output will be written.
     pub fn output(&self) -> Output {
         let _lock = self.mu.lock();
         self.output
     }
 
+    /// Set the destination to write output.
     pub fn set_output(&mut self, output: Output) {
         let _lock = self.mu.lock();
         self.output = output;
     }
 
+    /// Returns the current formatting flags.
     pub fn flags(&self) -> Flag {
         let _lock = self.mu.lock();
         self.flag
     }
 
+    /// Set the formatting flags.
     pub fn set_flags(&mut self, flag: Flag) {
         let _lock = self.mu.lock();
         self.flag = flag;
     }
 
+    /// Returns the current ouput prefix.
     pub fn prefix(&self) -> &str {
         let _lock = self.mu.lock();
         &self.prefix
     }
 
+    /// Set the output prefix.
     pub fn set_prefix(&mut self, prefix: &str) {
         let _lock = self.mu.lock();
         self.prefix = String::from(prefix);
@@ -139,6 +260,8 @@ impl Logger {
         }
     }
 
+    /// Writes the given string `s` using the logger. Typically, you would not use this directly
+    /// but instead use the macros provided by the `log` crate.
     pub fn write(
         &self,
         level: log::Level,
@@ -257,6 +380,13 @@ impl Logger {
 }
 
 impl Default for Logger {
+    /// Returns a default `Logger`.
+    ///
+    /// A default `Logger` has
+    ///   * level:  `log::LevelFilter::Trace`,
+    ///   * output: `Output::Stderr`,
+    ///   * flags:  `L_STD`, and
+    ///   * prefix: `""` (empty string)
     fn default() -> Logger {
         Logger::builder().build()
     }
