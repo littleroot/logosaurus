@@ -133,7 +133,7 @@ impl Logger {
         }
     }
 
-    fn write_output(&self, record: &log::Record) {
+    fn write_record(&self, record: &log::Record) {
         let now = chrono::offset::Local::now(); // get this early
         let h = self.header(record, now);
         let args = record.args().to_string();
@@ -198,24 +198,29 @@ impl Logger {
             if flag & L_LONG_FILE != 0 {
                 buf.push_str(&format!("{} ", record.target()));
             }
-            if let Some(f) = record.file() {
-                if flag & L_SHORT_FILE != 0 {
-                    // only use basename of path
-                    let p = path::Path::new(f);
-                    if let Some(base) = p.file_name() {
-                        if let Some(s) = base.to_str() {
-                            buf.push_str(&format!("{}", s));
+
+            // TODO: minimize String::from() calls
+            let f = match record.file() {
+                Some(f) => {
+                    if flag & L_SHORT_FILE != 0 {
+                        match path::Path::new(f).file_name() {
+                            Some(base) => base.to_string_lossy().to_string(),
+                            None => String::from("???"),
                         }
+                    } else {
+                        String::from(f)
                     }
-                } else {
-                    // write whole path
-                    buf.push_str(&format!("{}", f));
                 }
-                if let Some(n) = record.line() {
-                    buf.push_str(&format!(":{}", n));
-                }
-                buf.push_str(&format!(": "));
-            }
+                None => String::from("???"),
+            };
+            buf.push_str(&format!("{}", f));
+
+            let n = match record.line() {
+                Some(n) => n,
+                None => 0,
+            };
+            buf.push_str(&format!(":{}", n));
+            buf.push_str(&format!(": "));
         }
 
         if flag & L_MSG_PREFIX != 0 {
@@ -241,7 +246,7 @@ impl log::Log for Logger {
         if !self.enabled(record.metadata()) {
             return;
         }
-        self.write_output(record);
+        self.write_record(record);
     }
 
     fn flush(&self) {

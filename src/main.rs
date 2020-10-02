@@ -1,5 +1,5 @@
 use log::info;
-use package_log::{self, L_LONG_FILE, L_MICROSECONDS, L_SHORT_FILE, L_STD, L_UTC};
+use package_log::{self, L_SHORT_FILE, L_STD};
 
 fn main() {
     let mut b = package_log::Logger::builder();
