@@ -116,6 +116,16 @@ impl Logger {
         self.flag = flag;
     }
 
+    pub fn prefix(&self) -> &str {
+        let _lock = self.mu.lock();
+        &self.prefix
+    }
+
+    pub fn set_prefix(&mut self, prefix: &str) {
+        let _lock = self.mu.lock();
+        self.prefix = String::from(prefix);
+    }
+
     fn out(&self) -> Box<dyn io::Write> {
         match self.output() {
             Output::Stdout => Box::new(io::stdout()),
@@ -125,66 +135,68 @@ impl Logger {
 
     fn write_output(&self, record: &log::Record) {
         let now = chrono::offset::Local::now(); // get this early
+        let h = self.header(record, now);
         let args = record.args().to_string();
         let maybe_newline = if args.ends_with("\n") { "" } else { "\n" };
 
-        self.write_header(&mut self.out(), record, now);
-
         let mut out = self.out();
         let _lock = self.mu.lock().unwrap(); // lock for write
-        let _ = write!(out, "{}{}", args, maybe_newline);
+        let _ = write!(out, "{}{}{}", h, args, maybe_newline);
     }
 
-    fn write_datetime<Tz: chrono::TimeZone, W: io::Write>(
+    fn format_datetime<Tz: chrono::TimeZone>(
         &self,
-        w: &mut W,
+        buf: &mut String,
         flag: Flag,
         now: chrono::DateTime<Tz>,
     ) where
         Tz::Offset: fmt::Display,
     {
         if flag & L_DATE != 0 {
-            let _ = write!(w, "{} ", now.format("%Y/%m/%d"));
+            buf.push_str(&format!("{} ", now.format("%Y/%m/%d")));
         }
         if flag & (L_TIME | L_MICROSECONDS) != 0 {
-            let _ = write!(w, "{}", now.format("%H:%M:%S"));
+            buf.push_str(&format!("{}", now.format("%H:%M:%S")));
             if flag & L_MICROSECONDS != 0 {
                 let micro = now.nanosecond() / 1000;
-                let _ = write!(w, ".{:0wid$}", micro, wid = 6);
+                buf.push_str(&format!(".{:0wid$}", micro, wid = 6));
             }
-            let _ = write!(w, " ");
+            buf.push_str(&format!(" "));
         }
     }
 
-    fn write_header<Tz: chrono::TimeZone, W: io::Write>(
+    fn header<Tz: chrono::TimeZone>(
         &self,
-        w: &mut W,
         record: &log::Record,
         now: chrono::DateTime<Tz>,
-    ) where
+    ) -> String
+    where
         Tz::Offset: fmt::Display,
     {
         let flag = self.flags();
-        let _lock = self.mu.lock().unwrap(); // lock for writes
+        let prefix = self.prefix();
+        let mut buf = String::new();
 
-        // TODO: flag msg prefix
+        if flag & L_MSG_PREFIX == 0 {
+            buf.push_str(&format!("{}", prefix));
+        }
 
         if flag & L_LEVEL != 0 {
-            let _ = write!(w, "{} ", record.level());
+            buf.push_str(&format!("{} ", record.level()));
         }
 
         if flag & (L_DATE | L_TIME | L_MICROSECONDS) != 0 {
             if flag & L_UTC != 0 {
                 let now = now.with_timezone(&chrono::Utc);
-                self.write_datetime(w, flag, now);
+                self.format_datetime(&mut buf, flag, now);
             } else {
-                self.write_datetime(w, flag, now);
+                self.format_datetime(&mut buf, flag, now);
             }
         }
 
         if flag & (L_LONG_FILE | L_SHORT_FILE) != 0 {
             if flag & L_LONG_FILE != 0 {
-                let _ = write!(w, "{} ", record.target());
+                buf.push_str(&format!("{} ", record.target()));
             }
             if let Some(f) = record.file() {
                 if flag & L_SHORT_FILE != 0 {
@@ -192,19 +204,25 @@ impl Logger {
                     let p = path::Path::new(f);
                     if let Some(base) = p.file_name() {
                         if let Some(s) = base.to_str() {
-                            let _ = write!(w, "{}", s);
+                            buf.push_str(&format!("{}", s));
                         }
                     }
                 } else {
                     // write whole path
-                    let _ = write!(w, "{}", f);
+                    buf.push_str(&format!("{}", f));
                 }
                 if let Some(n) = record.line() {
-                    let _ = write!(w, ":{}", n);
+                    buf.push_str(&format!(":{}", n));
                 }
-                let _ = write!(w, ": ");
+                buf.push_str(&format!(": "));
             }
         }
+
+        if flag & L_MSG_PREFIX != 0 {
+            buf.push_str(&format!("{}", prefix));
+        }
+
+        buf
     }
 }
 

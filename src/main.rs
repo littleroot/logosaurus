@@ -6,7 +6,7 @@ fn main() {
     let logger = b
         .set_level(log::LevelFilter::Debug)
         .set_flags(L_STD | L_SHORT_FILE)
-        .set_prefix("foo")
+        .set_prefix("foo: ")
         .build();
 
     package_log::init(logger).unwrap();
