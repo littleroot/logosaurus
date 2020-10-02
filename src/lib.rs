@@ -139,15 +139,40 @@ impl Logger {
         }
     }
 
-    fn write_record(&self, record: &log::Record) {
+    pub fn write(
+        &self,
+        level: log::Level,
+        target: &str,
+        file: Option<&str>,
+        line: Option<u32>,
+        s: &str,
+    ) {
         let now = chrono::offset::Local::now(); // get this early
-        let h = self.header(record, now);
-        let args = record.args().to_string();
-        let maybe_newline = if args.ends_with("\n") { "" } else { "\n" };
+        let file = match file {
+            Some(f) => f,
+            None => "???",
+        };
+        let line = match line {
+            Some(n) => n,
+            None => 0,
+        };
 
+        let h = self.header(target, file, line, level, now);
+        let maybe_newline = if s.ends_with("\n") { "" } else { "\n" };
         let mut out = self.out();
+
         let _lock = self.mu.lock().unwrap(); // lock for write
-        let _ = write!(out, "{}{}{}", h, args, maybe_newline);
+        let _ = write!(out, "{}{}{}", h, s, maybe_newline);
+    }
+
+    fn write_record(&self, record: &log::Record) {
+        self.write(
+            record.level(),
+            record.target(),
+            record.file(),
+            record.line(),
+            &record.args().to_string(),
+        );
     }
 
     fn format_datetime<Tz: chrono::TimeZone>(
@@ -173,7 +198,10 @@ impl Logger {
 
     fn header<Tz: chrono::TimeZone>(
         &self,
-        record: &log::Record,
+        target: &str,
+        file: &str,
+        line: u32,
+        level: log::Level,
         now: chrono::DateTime<Tz>,
     ) -> String
     where
@@ -188,7 +216,7 @@ impl Logger {
         }
 
         if flag & L_LEVEL != 0 {
-            buf.push_str(&format!("{: <5} ", record.level()));
+            buf.push_str(&format!("{: <5} ", level));
         }
 
         if flag & (L_DATE | L_TIME | L_MICROSECONDS) != 0 {
@@ -202,30 +230,21 @@ impl Logger {
 
         if flag & (L_LONG_FILE | L_SHORT_FILE) != 0 {
             if flag & L_LONG_FILE != 0 {
-                buf.push_str(&format!("{} ", record.target()));
+                buf.push_str(&format!("{} ", target));
             }
 
-            // TODO: minimize String::from() calls
-            let f = match record.file() {
-                Some(f) => {
-                    if flag & L_SHORT_FILE != 0 {
-                        match path::Path::new(f).file_name() {
-                            Some(base) => base.to_string_lossy().into_owned(),
-                            None => String::from("???"),
-                        }
-                    } else {
-                        String::from(f)
-                    }
+            // TODO: reduce String::from calls
+            let f = if flag & L_SHORT_FILE != 0 {
+                match path::Path::new(file).file_name() {
+                    Some(base) => base.to_string_lossy().into_owned(),
+                    None => String::from("???"),
                 }
-                None => String::from("???"),
+            } else {
+                String::from(file)
             };
             buf.push_str(&format!("{}", f));
 
-            let n = match record.line() {
-                Some(n) => n,
-                None => 0,
-            };
-            buf.push_str(&format!(":{}", n));
+            buf.push_str(&format!(":{}", line));
             buf.push_str(&format!(": "));
         }
 
