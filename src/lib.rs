@@ -210,7 +210,7 @@ impl Logger {
                 Some(f) => {
                     if flag & L_SHORT_FILE != 0 {
                         match path::Path::new(f).file_name() {
-                            Some(base) => base.to_string_lossy().to_string(),
+                            Some(base) => base.to_string_lossy().into_owned(),
                             None => String::from("???"),
                         }
                     } else {
