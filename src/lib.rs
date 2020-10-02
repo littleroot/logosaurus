@@ -64,7 +64,7 @@ impl LoggerBuilder {
 }
 
 pub struct Logger {
-    mu: Mutex<()>,
+    mu: Mutex<()>, // guards below fields
     level: log::LevelFilter,
     output: Output,
     flag: Flag,
@@ -159,7 +159,7 @@ impl Logger {
             buf.push_str(&format!("{}", now.format("%H:%M:%S")));
             if flag & L_MICROSECONDS != 0 {
                 let micro = now.nanosecond() / 1000;
-                buf.push_str(&format!(".{:0wid$}", micro, wid = 6));
+                buf.push_str(&format!(".{:0<wid$}", micro, wid = 6));
             }
             buf.push_str(&format!(" "));
         }
@@ -182,7 +182,7 @@ impl Logger {
         }
 
         if flag & L_LEVEL != 0 {
-            buf.push_str(&format!("{} ", record.level()));
+            buf.push_str(&format!("{: <5} ", record.level()));
         }
 
         if flag & (L_DATE | L_TIME | L_MICROSECONDS) != 0 {
