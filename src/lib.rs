@@ -64,11 +64,11 @@ pub enum Output {
 /// With the exception of the `L_MSG_PREFIX` flag, there is no control over the order that header
 /// text appears, or the format they present (described in the `L*` constants).
 ///
-/// For example, the L_DATE | L_TIME flags produce:
+/// For example, the `L_DATE | L_TIME` flags produce:
 /// ```txt
 /// 2009/01/23 17:05:23 message
 /// ```
-/// while L_DATE | L_TIME | L_MICROSECONDS | L_SHORT_FILE | L_LEVEL produce:
+/// while `L_DATE | L_TIME | L_MICROSECONDS | L_SHORT_FILE | L_LEVEL` produce:
 /// ```txt
 /// INFO 2009/01/23 17:05:23 main.rs:3: message
 /// ```
