@@ -32,7 +32,7 @@
 //! fn main() {
 //!   let logger = Logger::builder()
 //!                   .set_level(log::LevelFilter::Debug)
-//!                   .set_out(io::stderr())
+//!                   .set_out(Box::new(io::stderr()))
 //!                   .set_flags(L_STD | L_SHORT_FILE | L_MICROSECONDS)
 //!                   .set_prefix("myprogram: ")
 //!                   .build();
@@ -91,6 +91,10 @@ pub const L_LEVEL: Flag = 128;
 /// Initial values for the default logger constructed with `Logger::default()`.
 pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 
+// TODO: https://doc.rust-lang.org/beta/unstable-book/language-features/trait-alias.html
+// Rewrite as trait alias when stable.
+// trait W = Write + Send
+
 /// Builder for [`Logger`].
 ///
 /// Use `Logger:builder()` to obtain a `LoggerBuilder`.
@@ -107,7 +111,7 @@ pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 ///
 /// let mut builder = Logger::builder();
 /// let logger = builder.set_level(log::LevelFilter::Debug)
-///                 .set_out(io::stderr())
+///                 .set_out(Box::new(io::stderr()))
 ///                 .set_flags(L_STD | L_SHORT_FILE)
 ///                 .set_prefix("myprogram: ")
 ///                 .build();
@@ -115,40 +119,40 @@ pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 ///
 /// [`Logger`]: struct.Logger.html
 /// [`Logger::default()`]: struct.Logger.html#impl-Default
-pub struct LoggerBuilder<W: Write + Send + Sync> {
+pub struct LoggerBuilder {
     level: log::LevelFilter,
-    out: Arc<Mutex<W>>,
+    out: Arc<Mutex<Box<dyn Write + Send>>>,
     flag: Flag,
     prefix: String,
 }
 
-impl<W: Write + Send + Sync> LoggerBuilder<W> {
+impl LoggerBuilder {
     /// Set the minimum allowed log level.
-    pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder<W> {
+    pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder {
         self.level = level;
         self
     }
 
     /// Set the destination where output should be written.
-    pub fn set_out<'a>(&'a mut self, out: W) -> &'a mut LoggerBuilder<W> {
+    pub fn set_out<'a>(&'a mut self, out: Box<dyn Write + Send>) -> &'a mut LoggerBuilder {
         self.out = Arc::new(Mutex::new(out));
         self
     }
 
     /// Set the formatting flags.
-    pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder<W> {
+    pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder {
         self.flag = flag;
         self
     }
 
     /// Set the prefix.
-    pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder<W> {
+    pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder {
         self.prefix = String::from(prefix);
         self
     }
 
     /// Construct a `Logger` from this `LoggerBuilder`.
-    pub fn build(&self) -> Logger<W> {
+    pub fn build(&self) -> Logger {
         Logger {
             mu: Mutex::new(()),
             level: self.level,
@@ -165,10 +169,10 @@ impl<W: Write + Send + Sync> LoggerBuilder<W> {
 /// Use [`LoggerBuilder`] to construct a `Logger`, or use `Logger::default()`.
 ///
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
-pub struct Logger<W: Write + Send + Sync> {
+pub struct Logger {
     mu: Mutex<()>, // guards below fields
     level: log::LevelFilter,
-    out: Arc<Mutex<W>>,
+    out: Arc<Mutex<Box<dyn Write + Send>>>,
     flag: Flag,
     prefix: String,
 }
@@ -189,24 +193,22 @@ pub struct Logger<W: Write + Send + Sync> {
 /// [`log`]: https://crates.io/crates/log
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
 /// [`Logger`]: struct.Logger.html
-pub fn init<W: Write + Send + Sync + 'static>(l: Logger<W>) -> Result<(), log::SetLoggerError> {
+pub fn init(l: Logger) -> Result<(), log::SetLoggerError> {
     log::set_max_level(l.level);
     log::set_boxed_logger(Box::new(l))
 }
 
-impl Logger<io::Stderr> {
+impl Logger {
     /// Returns a `LoggerBuilder` that can be used to build a `Logger`.
-    pub fn builder() -> LoggerBuilder<io::Stderr> {
+    pub fn builder() -> LoggerBuilder {
         LoggerBuilder {
             level: log::LevelFilter::Trace,
-            out: Arc::new(Mutex::new(io::stderr())),
+            out: Arc::new(Mutex::new(Box::new(io::stderr()))),
             flag: L_STD,
             prefix: String::from(""),
         }
     }
-}
 
-impl<W: Write + Send + Sync> Logger<W> {
     /// Returns the current level.
     pub fn level(&self) -> log::LevelFilter {
         let _lock = self.mu.lock();
@@ -220,13 +222,13 @@ impl<W: Write + Send + Sync> Logger<W> {
     }
 
     /// Returns the destination where output will be written.
-    pub fn out(&self) -> Arc<Mutex<W>> {
+    pub fn out(&self) -> Arc<Mutex<Box<dyn Write + Send>>> {
         let _lock = self.mu.lock();
         Arc::clone(&self.out)
     }
 
     /// Set the destination to write output.
-    pub fn set_out(&mut self, out: W) {
+    pub fn set_out(&mut self, out: Box<dyn Write + Send>) {
         let _lock = self.mu.lock();
         self.out = Arc::new(Mutex::new(out));
     }
@@ -372,7 +374,7 @@ impl<W: Write + Send + Sync> Logger<W> {
     }
 }
 
-impl Default for Logger<io::Stderr> {
+impl Default for Logger {
     /// Returns a default `Logger`.
     ///
     /// A default `Logger` has
@@ -381,13 +383,13 @@ impl Default for Logger<io::Stderr> {
     ///   * flags:  `L_STD`, and
     ///   * prefix: `""` (empty string)
     ///
-    fn default() -> Logger<io::Stderr> {
+    fn default() -> Logger {
         let b = Logger::builder();
         b.build()
     }
 }
 
-impl<W: Write + Send + Sync> log::Log for Logger<W> {
+impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         metadata.level() <= self.level()
     }
