@@ -83,8 +83,8 @@ pub const L_LONG_FILE: Flag = 8;
 pub const L_SHORT_FILE: Flag = 16;
 /// If `L_DATE` or `L_TIME` is set, use UTC rather than the local time.
 pub const L_UTC: Flag = 32;
-/// Move the "prefix" from the beginning of the header to the end,
-/// just before the message.
+/// Move the "prefix" from the beginning of the header to the end of the header, just before the
+/// message.
 pub const L_MSG_PREFIX: Flag = 64;
 /// Log level printed in capitalized form: INFO, TRACE, etc.
 pub const L_LEVEL: Flag = 128;
