@@ -65,7 +65,7 @@ use std::sync::Mutex;
 /// ```
 /// while `L_DATE | L_TIME | L_MICROSECONDS | L_SHORT_FILE | L_LEVEL` produce:
 /// ```txt
-/// INFO 2009/01/23 17:05:23 main.rs:3: message
+/// INFO  2009/01/23 17:05:23.123123 main.rs:3: message
 /// ```
 pub type Flag = u8;
 
@@ -86,7 +86,7 @@ pub const L_UTC: Flag = 32;
 /// Move the "prefix" from the beginning of the header to the end of the header, just before the
 /// message.
 pub const L_MSG_PREFIX: Flag = 64;
-/// Log level printed in capitalized form: INFO, TRACE, etc.
+/// Log level printed in capitalized form: INFO, TRACE, etc. Padded to width 5.
 pub const L_LEVEL: Flag = 128;
 /// Initial values for the default logger constructed with `Logger::default()`.
 pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
