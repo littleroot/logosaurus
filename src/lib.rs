@@ -127,7 +127,7 @@ pub struct LoggerBuilder {
 }
 
 impl LoggerBuilder {
-    /// Set the minimum allowed log level.
+    /// Set the allowed log level.
     pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder {
         self.level = level;
         self
@@ -267,6 +267,10 @@ impl Logger {
         line: Option<u32>,
         s: &str,
     ) {
+        if !self.enabled(level) {
+            return;
+        }
+
         let now = chrono::offset::Local::now(); // get this early
         let file = match file {
             Some(f) => f,
@@ -373,6 +377,10 @@ impl Logger {
 
         buf
     }
+
+    fn enabled(&self, incoming_level: log::Level) -> bool {
+        incoming_level <= self.level()
+    }
 }
 
 impl Default for Logger {
@@ -392,13 +400,10 @@ impl Default for Logger {
 
 impl log::Log for Logger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= self.level()
+        self.enabled(metadata.level())
     }
 
     fn log(&self, record: &log::Record) {
-        if !self.enabled(record.metadata()) {
-            return;
-        }
         self.write_record(record);
     }
 
