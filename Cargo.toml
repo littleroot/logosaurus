@@ -3,6 +3,9 @@ name = "logosaurus"
 version = "0.1.0"
 authors = ["Nishanth Shanmugham <nishanths@utexas.edu>"]
 edition = "2018"
+description = "Logging implementation modeled after the Go standard library's log package."
+repository = "https://github.com/littleroot/logosaurus"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

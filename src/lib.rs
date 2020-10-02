@@ -5,6 +5,9 @@
 //!
 //! Use [`init`] to initialize a logger with the `log` crate.
 //!
+//! Every log message is output on a separate line: if the message being printed does not end in a
+//! newline, the logger will add one.
+//!
 //! # Examples
 //!
 //! ## Using the default logger
@@ -92,7 +95,7 @@ pub const L_LEVEL: Flag = 128;
 /// Initial values for the default logger constructed with `Logger::default()`.
 pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 
-/// Builder for a [`Logger`].
+/// Builder for [`Logger`].
 ///
 /// Use `Logger:builder()` to obtain a `LoggerBuilder`.
 ///
