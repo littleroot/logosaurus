@@ -63,6 +63,17 @@ impl LoggerBuilder {
     }
 }
 
+impl Default for LoggerBuilder {
+    fn default() -> LoggerBuilder {
+        LoggerBuilder {
+            level: log::LevelFilter::Trace,
+            output: Output::Stderr,
+            flag: L_STD,
+            prefix: String::from(""),
+        }
+    }
+}
+
 pub struct Logger {
     mu: Mutex<()>, // guards below fields
     level: log::LevelFilter,
@@ -78,12 +89,7 @@ pub fn init(l: Logger) -> Result<(), log::SetLoggerError> {
 
 impl Logger {
     pub fn builder() -> LoggerBuilder {
-        LoggerBuilder {
-            level: log::LevelFilter::Trace,
-            output: Output::Stderr,
-            flag: L_STD,
-            prefix: String::from(""),
-        }
+        LoggerBuilder::default()
     }
 
     pub fn level(&self) -> log::LevelFilter {
