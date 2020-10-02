@@ -1,7 +1,7 @@
 # logosaurus
 
-Rust logging implementation modeled after Go's log package. It works with the
-[`log`](https://crates.io/crates/log) crate.
+Rust logging implementation modeled after the Go standard library log package.
+It works with the [`log`](https://crates.io/crates/log) crate.
 
 ## Documentation and examples
 
