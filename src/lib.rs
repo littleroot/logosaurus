@@ -26,12 +26,13 @@
 //!
 //! ```
 //! use log::{self, debug};
-//! use logosaurus::{Logger, Output, L_STD, L_SHORT_FILE, L_MICROSECONDS};
+//! use logosaurus::{Logger, L_STD, L_SHORT_FILE, L_MICROSECONDS};
+//! use std::io;
 //!
 //! fn main() {
 //!   let logger = Logger::builder()
 //!                   .set_level(log::LevelFilter::Debug)
-//!                   .set_output(Output::Stdout)
+//!                   .set_out(io::stderr())
 //!                   .set_flags(L_STD | L_SHORT_FILE | L_MICROSECONDS)
 //!                   .set_prefix("myprogram: ")
 //!                   .build();
@@ -47,16 +48,10 @@
 use chrono::{self, Timelike};
 use log;
 use std::fmt;
-use std::io;
+use std::io::{self, Write};
 use std::path;
+use std::sync::Arc;
 use std::sync::Mutex;
-
-/// Specifies the destination to write log output: stdout or stderr.
-#[derive(Clone, Copy)]
-pub enum Output {
-    Stdout,
-    Stderr,
-}
 
 /// Formatting flags for the header in log output.
 /// See the `L_*` constants.
@@ -107,11 +102,12 @@ pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 ///
 /// ```
 /// use log;
-/// use logosaurus::{Logger, Output, L_STD, L_SHORT_FILE};
+/// use logosaurus::{Logger, L_STD, L_SHORT_FILE};
+/// use std::io;
 ///
 /// let mut builder = Logger::builder();
 /// let logger = builder.set_level(log::LevelFilter::Debug)
-///                 .set_output(Output::Stdout)
+///                 .set_out(io::stderr())
 ///                 .set_flags(L_STD | L_SHORT_FILE)
 ///                 .set_prefix("myprogram: ")
 ///                 .build();
@@ -119,44 +115,44 @@ pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 ///
 /// [`Logger`]: struct.Logger.html
 /// [`Logger::default()`]: struct.Logger.html#impl-Default
-pub struct LoggerBuilder {
+pub struct LoggerBuilder<W: Write + Send + Sync> {
     level: log::LevelFilter,
-    output: Output,
+    out: Arc<Mutex<W>>,
     flag: Flag,
     prefix: String,
 }
 
-impl LoggerBuilder {
+impl<W: Write + Send + Sync> LoggerBuilder<W> {
     /// Set the minimum allowed log level.
-    pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder {
+    pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder<W> {
         self.level = level;
         self
     }
 
     /// Set the destination where output should be written.
-    pub fn set_output<'a>(&'a mut self, output: Output) -> &'a mut LoggerBuilder {
-        self.output = output;
+    pub fn set_out<'a>(&'a mut self, out: W) -> &'a mut LoggerBuilder<W> {
+        self.out = Arc::new(Mutex::new(out));
         self
     }
 
     /// Set the formatting flags.
-    pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder {
+    pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder<W> {
         self.flag = flag;
         self
     }
 
     /// Set the prefix.
-    pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder {
+    pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder<W> {
         self.prefix = String::from(prefix);
         self
     }
 
     /// Construct a `Logger` from this `LoggerBuilder`.
-    pub fn build(&self) -> Logger {
+    pub fn build(&self) -> Logger<W> {
         Logger {
             mu: Mutex::new(()),
             level: self.level,
-            output: self.output,
+            out: Arc::clone(&self.out),
             flag: self.flag,
             prefix: self.prefix.clone(),
         }
@@ -169,10 +165,10 @@ impl LoggerBuilder {
 /// Use [`LoggerBuilder`] to construct a `Logger`, or use `Logger::default()`.
 ///
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
-pub struct Logger {
+pub struct Logger<W: Write + Send + Sync> {
     mu: Mutex<()>, // guards below fields
     level: log::LevelFilter,
-    output: Output,
+    out: Arc<Mutex<W>>,
     flag: Flag,
     prefix: String,
 }
@@ -193,22 +189,24 @@ pub struct Logger {
 /// [`log`]: https://crates.io/crates/log
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
 /// [`Logger`]: struct.Logger.html
-pub fn init(l: Logger) -> Result<(), log::SetLoggerError> {
+pub fn init<W: Write + Send + Sync + 'static>(l: Logger<W>) -> Result<(), log::SetLoggerError> {
     log::set_max_level(l.level);
     log::set_boxed_logger(Box::new(l))
 }
 
-impl Logger {
+impl Logger<io::Stderr> {
     /// Returns a `LoggerBuilder` that can be used to build a `Logger`.
-    pub fn builder() -> LoggerBuilder {
+    pub fn builder() -> LoggerBuilder<io::Stderr> {
         LoggerBuilder {
             level: log::LevelFilter::Trace,
-            output: Output::Stderr,
+            out: Arc::new(Mutex::new(io::stderr())),
             flag: L_STD,
             prefix: String::from(""),
         }
     }
+}
 
+impl<W: Write + Send + Sync> Logger<W> {
     /// Returns the current level.
     pub fn level(&self) -> log::LevelFilter {
         let _lock = self.mu.lock();
@@ -222,15 +220,15 @@ impl Logger {
     }
 
     /// Returns the destination where output will be written.
-    pub fn output(&self) -> Output {
+    pub fn out(&self) -> Arc<Mutex<W>> {
         let _lock = self.mu.lock();
-        self.output
+        Arc::clone(&self.out)
     }
 
     /// Set the destination to write output.
-    pub fn set_output(&mut self, output: Output) {
+    pub fn set_out(&mut self, out: W) {
         let _lock = self.mu.lock();
-        self.output = output;
+        self.out = Arc::new(Mutex::new(out));
     }
 
     /// Returns the current formatting flags.
@@ -257,16 +255,9 @@ impl Logger {
         self.prefix = String::from(prefix);
     }
 
-    fn out(&self) -> Box<dyn io::Write> {
-        match self.output() {
-            Output::Stdout => Box::new(io::stdout()),
-            Output::Stderr => Box::new(io::stderr()),
-        }
-    }
-
     /// Writes the given string `s` using the logger. Typically, you would not use this directly
     /// but instead use the macros provided by the `log` crate.
-    pub fn write(
+    pub fn write_output(
         &self,
         level: log::Level,
         target: &str,
@@ -283,17 +274,15 @@ impl Logger {
             Some(n) => n,
             None => 0,
         };
-
         let h = self.header(target, file, line, level, now);
         let maybe_newline = if s.ends_with("\n") { "" } else { "\n" };
-        let mut out = self.out();
 
-        let _lock = self.mu.lock().unwrap(); // lock for write
+        let mut out = self.out.lock().unwrap();
         let _ = write!(out, "{}{}{}", h, s, maybe_newline);
     }
 
     fn write_record(&self, record: &log::Record) {
-        self.write(
+        self.write_output(
             record.level(),
             record.target(),
             record.file(),
@@ -383,20 +372,22 @@ impl Logger {
     }
 }
 
-impl Default for Logger {
+impl Default for Logger<io::Stderr> {
     /// Returns a default `Logger`.
     ///
     /// A default `Logger` has
     ///   * level:  `log::LevelFilter::Trace`,
-    ///   * output: `Output::Stderr`,
+    ///   * out:    stderr,
     ///   * flags:  `L_STD`, and
     ///   * prefix: `""` (empty string)
-    fn default() -> Logger {
-        Logger::builder().build()
+    ///
+    fn default() -> Logger<io::Stderr> {
+        let b = Logger::builder();
+        b.build()
     }
 }
 
-impl log::Log for Logger {
+impl<W: Write + Send + Sync> log::Log for Logger<W> {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         metadata.level() <= self.level()
     }
@@ -409,6 +400,6 @@ impl log::Log for Logger {
     }
 
     fn flush(&self) {
-        let _ = self.out().flush();
+        let _ = self.out().lock().unwrap().flush();
     }
 }
