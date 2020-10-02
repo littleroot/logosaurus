@@ -3,3 +3,6 @@ Cargo.lock
 
 tags
 *.swp
+
+# for local testing only
+src/main.rs
