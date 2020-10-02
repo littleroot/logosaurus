@@ -279,7 +279,8 @@ impl Logger {
         let h = self.header(target, file, line, level, now);
         let maybe_newline = if s.ends_with("\n") { "" } else { "\n" };
 
-        let mut out = self.out.lock().unwrap();
+        let out = self.out();
+        let mut out = out.lock().unwrap();
         let _ = write!(out, "{}{}{}", h, s, maybe_newline);
     }
 
