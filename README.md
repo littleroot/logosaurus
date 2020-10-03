@@ -1,6 +1,6 @@
 # logosaurus
 
-[![crates.io](https://img.shields.io/crates/v/logosaurus.svg)](https://crates.io/crates/log)
+[![crates.io](https://img.shields.io/crates/v/logosaurus.svg)](https://crates.io/crates/logosaurus)
 [![docs.rs](https://docs.rs/logosaurus/badge.svg)](https://docs.rs/logosaurus)
 
 Rust logging implementation modeled after the Go standard library log package.
