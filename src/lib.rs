@@ -427,7 +427,9 @@ mod tests {
     #[test]
     fn test_header() {
         let mut logger = Logger::default();
-        let time = Local.ymd(2020, 10, 3).and_hms_micro(1, 2, 3, 9876);
+        let time = FixedOffset::east(3600 * 5 + 1800)
+            .ymd(2020, 10, 3)
+            .and_hms_micro(1, 2, 3, 9876);
 
         logger.set_flags(L_STD | L_MICROSECONDS | L_SHORT_FILE);
         let expect = "TRACE 2020/10/03 01:02:03.009876 file.rs:9: ";
