@@ -318,7 +318,7 @@ impl Logger {
             buf.push_str(&format!("{}", now.format("%H:%M:%S")));
             if flag & L_MICROSECONDS != 0 {
                 let micro = now.nanosecond() / 1000;
-                buf.push_str(&format!(".{:0<wid$}", micro, wid = 6));
+                buf.push_str(&format!(".{:0>wid$}", micro, wid = 6));
             }
             buf.push_str(&format!(" "));
         }
@@ -420,4 +420,34 @@ impl log::Log for Logger {
 pub mod test_util;
 
 #[cfg(test)]
-mod tests {}
+mod tests {
+    use super::*;
+    use chrono::prelude::*;
+
+    #[test]
+    fn test_header() {
+        let mut logger = Logger::default();
+        let time = Local.ymd(2020, 10, 3).and_hms_micro(1, 2, 3, 9876);
+
+        logger.set_flags(L_STD | L_MICROSECONDS | L_SHORT_FILE);
+        let expect = "TRACE 2020/10/03 01:02:03.009876 file.rs:9: ";
+        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Trace, time);
+        assert_eq!(expect, got);
+
+        logger.set_flags(L_DATE | L_TIME | L_UTC | L_LONG_FILE);
+        let expect = "2020/10/02 19:32:03 foo src/dir/file.rs:9: ";
+        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Info, time);
+        assert_eq!(expect, got);
+
+        logger.set_flags(L_TIME | L_LEVEL);
+        logger.set_prefix("myprog: ");
+        let expect = "myprog: INFO  01:02:03 ";
+        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Info, time);
+        assert_eq!(expect, got);
+
+        logger.set_flags(L_MSG_PREFIX | L_TIME | L_LEVEL);
+        let expect = "INFO  01:02:03 myprog: ";
+        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Info, time);
+        assert_eq!(expect, got);
+    }
+}
