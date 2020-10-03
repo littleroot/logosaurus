@@ -8,6 +8,11 @@
 //! Every log message is output on a separate line: if the message being printed does not end in a
 //! newline, the logger will add one.
 //!
+//! Sample default log output:
+//! ```txt
+//! WARN  2020/10/02 21:27:03 hello, world
+//! ```
+//!
 //! # Examples
 //!
 //! ## Using the default logger
@@ -411,3 +416,8 @@ impl log::Log for Logger {
         let _ = self.out().lock().unwrap().flush();
     }
 }
+
+pub mod test_util;
+
+#[cfg(test)]
+mod tests {}
