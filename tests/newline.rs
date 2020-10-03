@@ -5,7 +5,7 @@ use std::str;
 use std::sync::{Arc, Mutex};
 
 #[test]
-fn test_level_filter() {
+fn test_newline() {
     let v = Mutex::new(Vec::new());
     let arc = Arc::new(v);
     let w = SyncWriter::new(Arc::clone(&arc));
