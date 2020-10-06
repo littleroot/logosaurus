@@ -10,10 +10,7 @@ fn test_newline() {
     let arc = Arc::new(v);
     let w = SyncWriter::new(Arc::clone(&arc));
 
-    let logger = Logger::builder()
-        .set_out(Box::new(w))
-        .set_flags(L_NONE)
-        .build();
+    let logger = Logger::builder(w).set_flags(L_NONE).build();
     init(logger).unwrap();
 
     warn!("message0");

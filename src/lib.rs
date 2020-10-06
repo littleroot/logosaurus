@@ -1,14 +1,13 @@
 //! The logosaurus crate provides a logging implementation that works with the [`log`] crate. The
 //! crate and the logger are modeled after the Go standard library's log package.
 //!
-//! The primary type is [`Logger`], which represents a logging object.
-//!
-//! Use [`init`] to globally initialize a logger with the `log` crate.
+//! The primary type is [`Logger`], which represents a logging object. Use
+//! [`init`] to globally initialize a logger with the `log` crate.
 //!
 //! Every log message is output on a separate line: if the message being printed does not end in a
 //! newline, the logger will add one.
 //!
-//! Sample default log output:
+//! The default logger writes logs to stderr using this format:
 //! ```txt
 //! WARN  2020/10/02 21:27:03 hello, world
 //! ```
@@ -35,9 +34,8 @@
 //! use std::io;
 //!
 //! fn main() {
-//!   let logger = Logger::builder()
+//!   let logger = Logger::builder(io::stdout())
 //!                   .set_level(log::LevelFilter::Debug)
-//!                   .set_out(Box::new(io::stderr()))
 //!                   .set_flags(L_STD | L_SHORT_FILE | L_MICROSECONDS)
 //!                   .set_prefix("myprogram: ")
 //!                   .build();
@@ -114,9 +112,9 @@ pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 /// use logosaurus::{Logger, L_STD, L_SHORT_FILE};
 /// use std::io;
 ///
-/// let mut builder = Logger::builder();
-/// let logger = builder.set_level(log::LevelFilter::Debug)
-///                 .set_out(Box::new(io::stderr()))
+/// let mut builder = Logger::builder(io::stdout());
+/// let logger = builder
+///                 .set_level(log::LevelFilter::Debug)
 ///                 .set_flags(L_STD | L_SHORT_FILE)
 ///                 .set_prefix("myprogram: ")
 ///                 .build();
@@ -124,42 +122,35 @@ pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 ///
 /// [`Logger`]: struct.Logger.html
 /// [`Logger::default()`]: struct.Logger.html#impl-Default
-pub struct LoggerBuilder {
+pub struct LoggerBuilder<W: Write + Send> {
     level: log::LevelFilter,
-    out: Arc<Mutex<Box<dyn Write + Send>>>,
+    out: Arc<Mutex<W>>,
     flag: Flag,
     prefix: String,
 }
 
-impl LoggerBuilder {
+impl<W: Write + Send> LoggerBuilder<W> {
     /// Set the allowed log level.
-    pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder {
+    pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder<W> {
         self.level = level;
         self
     }
 
-    /// Set the destination where output should be written.
-    pub fn set_out<'a>(&'a mut self, out: Box<dyn Write + Send>) -> &'a mut LoggerBuilder {
-        self.out = Arc::new(Mutex::new(out));
-        self
-    }
-
     /// Set the formatting flags.
-    pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder {
+    pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder<W> {
         self.flag = flag;
         self
     }
 
     /// Set the prefix.
-    pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder {
+    pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder<W> {
         self.prefix = String::from(prefix);
         self
     }
 
     /// Construct a `Logger` from this `LoggerBuilder`.
-    pub fn build(&self) -> Logger {
+    pub fn build(&self) -> Logger<W> {
         Logger {
-            mu: Mutex::new(()),
             level: self.level,
             out: Arc::clone(&self.out),
             flag: self.flag,
@@ -174,10 +165,9 @@ impl LoggerBuilder {
 /// Use [`LoggerBuilder`] to construct a `Logger`, or use `Logger::default()`.
 ///
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
-pub struct Logger {
-    mu: Mutex<()>, // guards below fields
+pub struct Logger<W: Write + Send> {
     level: log::LevelFilter,
-    out: Arc<Mutex<Box<dyn Write + Send>>>,
+    out: Arc<Mutex<W>>,
     flag: Flag,
     prefix: String,
 }
@@ -192,74 +182,26 @@ pub struct Logger {
 ///   debug!("hello, world");
 /// }
 /// ```
-///
+//
 /// See [`LoggerBuilder`] or [`Logger`] to initialize a custom logger.
 ///
 /// [`log`]: https://crates.io/crates/log
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
 /// [`Logger`]: struct.Logger.html
-pub fn init(l: Logger) -> Result<(), log::SetLoggerError> {
+pub fn init<W: Write + Send + 'static>(l: Logger<W>) -> Result<(), log::SetLoggerError> {
     log::set_max_level(l.level);
     log::set_boxed_logger(Box::new(l))
 }
 
-impl Logger {
+impl<W: Write + Send> Logger<W> {
     /// Returns a `LoggerBuilder` that can be used to build a `Logger`.
-    pub fn builder() -> LoggerBuilder {
+    pub fn builder(w: W) -> LoggerBuilder<W> {
         LoggerBuilder {
             level: log::LevelFilter::Trace,
-            out: Arc::new(Mutex::new(Box::new(io::stderr()))),
+            out: Arc::new(Mutex::new(w)),
             flag: L_STD,
             prefix: String::from(""),
         }
-    }
-
-    /// Returns the current level.
-    pub fn level(&self) -> log::LevelFilter {
-        let _lock = self.mu.lock();
-        self.level
-    }
-
-    /// Set the level.
-    pub fn set_level(&mut self, level: log::LevelFilter) {
-        let _lock = self.mu.lock();
-        self.level = level;
-    }
-
-    /// Returns the destination where output will be written.
-    pub fn out(&self) -> Arc<Mutex<Box<dyn Write + Send>>> {
-        let _lock = self.mu.lock();
-        Arc::clone(&self.out)
-    }
-
-    /// Set the destination to write output.
-    pub fn set_out(&mut self, out: Box<dyn Write + Send>) {
-        let _lock = self.mu.lock();
-        self.out = Arc::new(Mutex::new(out));
-    }
-
-    /// Returns the current formatting flags.
-    pub fn flags(&self) -> Flag {
-        let _lock = self.mu.lock();
-        self.flag
-    }
-
-    /// Set the formatting flags.
-    pub fn set_flags(&mut self, flag: Flag) {
-        let _lock = self.mu.lock();
-        self.flag = flag;
-    }
-
-    /// Returns the current ouput prefix.
-    pub fn prefix(&self) -> &str {
-        let _lock = self.mu.lock();
-        &self.prefix
-    }
-
-    /// Set the output prefix.
-    pub fn set_prefix(&mut self, prefix: &str) {
-        let _lock = self.mu.lock();
-        self.prefix = String::from(prefix);
     }
 
     /// Writes the given string `s` using the logger. Typically, you would not use this directly
@@ -288,8 +230,7 @@ impl Logger {
         let h = self.header(target, file, line, level, now);
         let maybe_newline = if s.ends_with("\n") { "" } else { "\n" };
 
-        let out = self.out();
-        let mut out = out.lock().unwrap();
+        let mut out = self.out.lock().unwrap();
         let _ = write!(out, "{}{}{}", h, s, maybe_newline);
     }
 
@@ -303,27 +244,6 @@ impl Logger {
         );
     }
 
-    fn format_datetime<Tz: chrono::TimeZone>(
-        &self,
-        buf: &mut String,
-        flag: Flag,
-        now: chrono::DateTime<Tz>,
-    ) where
-        Tz::Offset: fmt::Display,
-    {
-        if flag & L_DATE != 0 {
-            buf.push_str(&format!("{} ", now.format("%Y/%m/%d")));
-        }
-        if flag & (L_TIME | L_MICROSECONDS) != 0 {
-            buf.push_str(&format!("{}", now.format("%H:%M:%S")));
-            if flag & L_MICROSECONDS != 0 {
-                let micro = now.nanosecond() / 1000;
-                buf.push_str(&format!(".{:0>wid$}", micro, wid = 6));
-            }
-            buf.push_str(&format!(" "));
-        }
-    }
-
     fn header<Tz: chrono::TimeZone>(
         &self,
         target: &str,
@@ -335,60 +255,90 @@ impl Logger {
     where
         Tz::Offset: fmt::Display,
     {
-        let flag = self.flags();
-        let prefix = self.prefix();
-        let mut buf = String::new();
-
-        if flag & L_MSG_PREFIX == 0 {
-            buf.push_str(&format!("{}", prefix));
-        }
-
-        if flag & L_LEVEL != 0 {
-            buf.push_str(&format!("{: <5} ", level));
-        }
-
-        if flag & (L_DATE | L_TIME | L_MICROSECONDS) != 0 {
-            if flag & L_UTC != 0 {
-                let now = now.with_timezone(&chrono::Utc);
-                self.format_datetime(&mut buf, flag, now);
-            } else {
-                self.format_datetime(&mut buf, flag, now);
-            }
-        }
-
-        if flag & (L_LONG_FILE | L_SHORT_FILE) != 0 {
-            if flag & L_LONG_FILE != 0 {
-                buf.push_str(&format!("{} ", target));
-            }
-
-            // TODO: reduce String::from calls
-            let f = if flag & L_SHORT_FILE != 0 {
-                match path::Path::new(file).file_name() {
-                    Some(base) => base.to_string_lossy().into_owned(),
-                    None => String::from("???"),
-                }
-            } else {
-                String::from(file)
-            };
-            buf.push_str(&format!("{}", f));
-
-            buf.push_str(&format!(":{}", line));
-            buf.push_str(&format!(": "));
-        }
-
-        if flag & L_MSG_PREFIX != 0 {
-            buf.push_str(&format!("{}", prefix));
-        }
-
-        buf
+        header_with_flags(target, file, line, level, now, self.flag, &self.prefix)
     }
 
     fn enabled(&self, incoming_level: log::Level) -> bool {
-        incoming_level <= self.level()
+        incoming_level <= self.level
     }
 }
 
-impl Default for Logger {
+fn format_datetime<Tz: chrono::TimeZone>(buf: &mut String, flag: Flag, now: chrono::DateTime<Tz>)
+where
+    Tz::Offset: fmt::Display,
+{
+    if flag & L_DATE != 0 {
+        buf.push_str(&format!("{} ", now.format("%Y/%m/%d")));
+    }
+    if flag & (L_TIME | L_MICROSECONDS) != 0 {
+        buf.push_str(&format!("{}", now.format("%H:%M:%S")));
+        if flag & L_MICROSECONDS != 0 {
+            let micro = now.nanosecond() / 1000;
+            buf.push_str(&format!(".{:0>wid$}", micro, wid = 6));
+        }
+        buf.push_str(&format!(" "));
+    }
+}
+
+fn header_with_flags<Tz: chrono::TimeZone>(
+    target: &str,
+    file: &str,
+    line: u32,
+    level: log::Level,
+    now: chrono::DateTime<Tz>,
+    flag: Flag,
+    prefix: &str,
+) -> String
+where
+    Tz::Offset: fmt::Display,
+{
+    let mut buf = String::new();
+
+    if flag & L_MSG_PREFIX == 0 {
+        buf.push_str(&format!("{}", prefix));
+    }
+
+    if flag & L_LEVEL != 0 {
+        buf.push_str(&format!("{: <5} ", level));
+    }
+
+    if flag & (L_DATE | L_TIME | L_MICROSECONDS) != 0 {
+        if flag & L_UTC != 0 {
+            let now = now.with_timezone(&chrono::Utc);
+            format_datetime(&mut buf, flag, now);
+        } else {
+            format_datetime(&mut buf, flag, now);
+        }
+    }
+
+    if flag & (L_LONG_FILE | L_SHORT_FILE) != 0 {
+        if flag & L_LONG_FILE != 0 {
+            buf.push_str(&format!("{} ", target));
+        }
+
+        // TODO: reduce String::from calls
+        let f = if flag & L_SHORT_FILE != 0 {
+            match path::Path::new(file).file_name() {
+                Some(base) => base.to_string_lossy().into_owned(),
+                None => String::from("???"),
+            }
+        } else {
+            String::from(file)
+        };
+        buf.push_str(&format!("{}", f));
+
+        buf.push_str(&format!(":{}", line));
+        buf.push_str(&format!(": "));
+    }
+
+    if flag & L_MSG_PREFIX != 0 {
+        buf.push_str(&format!("{}", prefix));
+    }
+
+    buf
+}
+
+impl Default for Logger<io::Stderr> {
     /// Returns a default `Logger`.
     ///
     /// A default `Logger` has
@@ -397,13 +347,12 @@ impl Default for Logger {
     ///   * flags:  `L_STD`, and
     ///   * prefix: `""` (empty string)
     ///
-    fn default() -> Logger {
-        let b = Logger::builder();
-        b.build()
+    fn default() -> Logger<io::Stderr> {
+        Logger::builder(io::stderr()).build()
     }
 }
 
-impl log::Log for Logger {
+impl<W: Write + Send> log::Log for Logger<W> {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         self.enabled(metadata.level())
     }
@@ -413,10 +362,11 @@ impl log::Log for Logger {
     }
 
     fn flush(&self) {
-        let _ = self.out().lock().unwrap().flush();
+        let _ = self.out.lock().unwrap().flush();
     }
 }
 
+#[doc(hidden)]
 pub mod test_util;
 
 #[cfg(test)]
@@ -426,30 +376,61 @@ mod tests {
 
     #[test]
     fn test_header() {
-        let mut logger = Logger::default();
         let time = FixedOffset::east(3600 * 5 + 1800)
             .ymd(2020, 10, 3)
             .and_hms_micro(1, 2, 3, 9876);
 
-        logger.set_flags(L_STD | L_MICROSECONDS | L_SHORT_FILE);
+        let flags = L_STD | L_MICROSECONDS | L_SHORT_FILE;
         let expect = "TRACE 2020/10/03 01:02:03.009876 file.rs:9: ";
-        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Trace, time);
+        let got = header_with_flags(
+            "foo",
+            "src/dir/file.rs",
+            9,
+            log::Level::Trace,
+            time,
+            flags,
+            "",
+        );
         assert_eq!(expect, got);
 
-        logger.set_flags(L_DATE | L_TIME | L_UTC | L_LONG_FILE);
+        let flags = L_DATE | L_TIME | L_UTC | L_LONG_FILE;
         let expect = "2020/10/02 19:32:03 foo src/dir/file.rs:9: ";
-        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Info, time);
+        let got = header_with_flags(
+            "foo",
+            "src/dir/file.rs",
+            9,
+            log::Level::Info,
+            time,
+            flags,
+            "",
+        );
         assert_eq!(expect, got);
 
-        logger.set_flags(L_TIME | L_LEVEL);
-        logger.set_prefix("myprog: ");
+        let flags = L_TIME | L_LEVEL;
+        let prefix = "myprog: ";
         let expect = "myprog: INFO  01:02:03 ";
-        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Info, time);
+        let got = header_with_flags(
+            "foo",
+            "src/dir/file.rs",
+            9,
+            log::Level::Info,
+            time,
+            flags,
+            prefix,
+        );
         assert_eq!(expect, got);
 
-        logger.set_flags(L_MSG_PREFIX | L_TIME | L_LEVEL);
+        let flags = L_MSG_PREFIX | L_TIME | L_LEVEL;
         let expect = "INFO  01:02:03 myprog: ";
-        let got = logger.header("foo", "src/dir/file.rs", 9, log::Level::Info, time);
+        let got = header_with_flags(
+            "foo",
+            "src/dir/file.rs",
+            9,
+            log::Level::Info,
+            time,
+            flags,
+            prefix,
+        );
         assert_eq!(expect, got);
     }
 }

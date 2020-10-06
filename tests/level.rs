@@ -10,8 +10,7 @@ fn test_level_filter() {
     let arc = Arc::new(v);
     let w = SyncWriter::new(Arc::clone(&arc));
 
-    let logger = Logger::builder()
-        .set_out(Box::new(w))
+    let logger = Logger::builder(w)
         .set_level(log::LevelFilter::Warn)
         .set_flags(L_LEVEL)
         .build();
