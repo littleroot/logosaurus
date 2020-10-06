@@ -324,10 +324,7 @@ where
         } else {
             String::from(file)
         };
-        buf.push_str(&format!("{}", f));
-
-        buf.push_str(&format!(":{}", line));
-        buf.push_str(&format!(": "));
+        buf.push_str(&format!("{}:{}: ", f, line));
     }
 
     if flag & L_MSG_PREFIX != 0 {
