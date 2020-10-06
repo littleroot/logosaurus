@@ -32,9 +32,8 @@ use logosaurus::{Logger, L_STD, L_SHORT_FILE, L_MICROSECONDS};
 use std::io;
 
 fn main() {
-  let logger = Logger::builder()
+  let logger = Logger::builder(io::stdout())
                   .set_level(log::LevelFilter::Debug)
-                  .set_out(Box::new(io::stderr()))
                   .set_flags(L_STD | L_SHORT_FILE | L_MICROSECONDS)
                   .set_prefix("myprogram: ")
                   .build();
