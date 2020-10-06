@@ -53,7 +53,6 @@ use log;
 use std::fmt;
 use std::io::{self, Write};
 use std::path;
-use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Formatting flags for the header in log output.
@@ -124,35 +123,36 @@ pub const L_STD: Flag = L_DATE | L_TIME | L_LEVEL;
 /// [`Logger::default()`]: struct.Logger.html#impl-Default
 pub struct LoggerBuilder<W: Write + Send> {
     level: log::LevelFilter,
-    out: Arc<Mutex<W>>,
+    out: Option<W>,
     flag: Flag,
     prefix: String,
 }
 
 impl<W: Write + Send> LoggerBuilder<W> {
     /// Set the allowed log level.
-    pub fn set_level<'a>(&'a mut self, level: log::LevelFilter) -> &'a mut LoggerBuilder<W> {
+    pub fn set_level(mut self, level: log::LevelFilter) -> LoggerBuilder<W> {
         self.level = level;
         self
     }
 
     /// Set the formatting flags.
-    pub fn set_flags<'a>(&'a mut self, flag: Flag) -> &'a mut LoggerBuilder<W> {
+    pub fn set_flags(mut self, flag: Flag) -> LoggerBuilder<W> {
         self.flag = flag;
         self
     }
 
     /// Set the prefix.
-    pub fn set_prefix<'a>(&'a mut self, prefix: &str) -> &'a mut LoggerBuilder<W> {
+    pub fn set_prefix(mut self, prefix: &str) -> LoggerBuilder<W> {
         self.prefix = String::from(prefix);
         self
     }
 
-    /// Construct a `Logger` from this `LoggerBuilder`.
-    pub fn build(&self) -> Logger<W> {
+    /// Construct a `Logger` from this `LoggerBuilder`. Consumes the
+    /// `LoggerBuilder`.
+    pub fn build(mut self) -> Logger<W> {
         Logger {
             level: self.level,
-            out: Arc::clone(&self.out),
+            out: Mutex::new(self.out.take().unwrap()),
             flag: self.flag,
             prefix: self.prefix.clone(),
         }
@@ -167,7 +167,7 @@ impl<W: Write + Send> LoggerBuilder<W> {
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
 pub struct Logger<W: Write + Send> {
     level: log::LevelFilter,
-    out: Arc<Mutex<W>>,
+    out: Mutex<W>,
     flag: Flag,
     prefix: String,
 }
@@ -183,11 +183,10 @@ pub struct Logger<W: Write + Send> {
 /// }
 /// ```
 //
-/// See [`LoggerBuilder`] or [`Logger`] to initialize a custom logger.
+/// See [`LoggerBuilder`] to create a custom logger.
 ///
 /// [`log`]: https://crates.io/crates/log
 /// [`LoggerBuilder`]: struct.LoggerBuilder.html
-/// [`Logger`]: struct.Logger.html
 pub fn init<W: Write + Send + 'static>(l: Logger<W>) -> Result<(), log::SetLoggerError> {
     log::set_max_level(l.level);
     log::set_boxed_logger(Box::new(l))
@@ -198,7 +197,7 @@ impl<W: Write + Send> Logger<W> {
     pub fn builder(w: W) -> LoggerBuilder<W> {
         LoggerBuilder {
             level: log::LevelFilter::Trace,
-            out: Arc::new(Mutex::new(w)),
+            out: Some(w),
             flag: L_STD,
             prefix: String::from(""),
         }
