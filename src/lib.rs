@@ -254,7 +254,18 @@ impl<W: Write + Send> Logger<W> {
     where
         Tz::Offset: fmt::Display,
     {
-        header_with_flags(target, file, line, level, now, self.flag, &self.prefix)
+        let mut buf = String::new();
+        format_header(
+            &mut buf,
+            target,
+            file,
+            line,
+            level,
+            now,
+            self.flag,
+            &self.prefix,
+        );
+        buf
     }
 
     fn enabled(&self, incoming_level: log::Level) -> bool {
@@ -279,7 +290,8 @@ where
     }
 }
 
-fn header_with_flags<Tz: chrono::TimeZone>(
+fn format_header<Tz: chrono::TimeZone>(
+    buf: &mut String,
     target: &str,
     file: &str,
     line: u32,
@@ -287,12 +299,9 @@ fn header_with_flags<Tz: chrono::TimeZone>(
     now: chrono::DateTime<Tz>,
     flag: Flag,
     prefix: &str,
-) -> String
-where
+) where
     Tz::Offset: fmt::Display,
 {
-    let mut buf = String::new();
-
     if flag & L_MSG_PREFIX == 0 {
         buf.push_str(&format!("{}", prefix));
     }
@@ -304,9 +313,9 @@ where
     if flag & (L_DATE | L_TIME | L_MICROSECONDS) != 0 {
         if flag & L_UTC != 0 {
             let now = now.with_timezone(&chrono::Utc);
-            format_datetime(&mut buf, flag, now);
+            format_datetime(buf, flag, now);
         } else {
-            format_datetime(&mut buf, flag, now);
+            format_datetime(buf, flag, now);
         }
     }
 
@@ -330,8 +339,6 @@ where
     if flag & L_MSG_PREFIX != 0 {
         buf.push_str(&format!("{}", prefix));
     }
-
-    buf
 }
 
 impl Default for Logger<io::Stderr> {
@@ -370,6 +377,24 @@ mod tests {
     use super::*;
     use chrono::prelude::*;
 
+    // helper
+    fn header<Tz: chrono::TimeZone>(
+        target: &str,
+        file: &str,
+        line: u32,
+        level: log::Level,
+        now: chrono::DateTime<Tz>,
+        flag: Flag,
+        prefix: &str,
+    ) -> String
+    where
+        Tz::Offset: fmt::Display,
+    {
+        let mut buf = String::new();
+        format_header(&mut buf, target, file, line, level, now, flag, prefix);
+        buf
+    }
+
     #[test]
     fn test_header() {
         let time = FixedOffset::east(3600 * 5 + 1800)
@@ -378,7 +403,7 @@ mod tests {
 
         let flags = L_STD | L_MICROSECONDS | L_SHORT_FILE;
         let expect = "TRACE 2020/10/03 01:02:03.009876 file.rs:9: ";
-        let got = header_with_flags(
+        let got = header(
             "foo",
             "src/dir/file.rs",
             9,
@@ -391,7 +416,7 @@ mod tests {
 
         let flags = L_DATE | L_TIME | L_UTC | L_LONG_FILE;
         let expect = "2020/10/02 19:32:03 foo src/dir/file.rs:9: ";
-        let got = header_with_flags(
+        let got = header(
             "foo",
             "src/dir/file.rs",
             9,
@@ -405,7 +430,7 @@ mod tests {
         let flags = L_TIME | L_LEVEL;
         let prefix = "myprog: ";
         let expect = "myprog: INFO  01:02:03 ";
-        let got = header_with_flags(
+        let got = header(
             "foo",
             "src/dir/file.rs",
             9,
@@ -418,7 +443,7 @@ mod tests {
 
         let flags = L_MSG_PREFIX | L_TIME | L_LEVEL;
         let expect = "INFO  01:02:03 myprog: ";
-        let got = header_with_flags(
+        let got = header(
             "foo",
             "src/dir/file.rs",
             9,
